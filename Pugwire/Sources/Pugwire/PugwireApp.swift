@@ -30,6 +30,10 @@ struct PugwireApp: App {
         // so the ~700k-range database is already loaded — in practice well
         // under a second — by the time anyone looks at the map.
         GeoIPResolver.shared.loadIfNeeded()
+
+        // Parse the bundled coastline GeoJSON off the main thread so the map
+        // renders instantly on first open instead of hitching while it loads.
+        DispatchQueue.global().async { _ = WorldMap.shared }
     }
 
     var body: some Scene {

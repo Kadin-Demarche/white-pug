@@ -8,98 +8,68 @@ private struct MapPin: Identifiable {
     let totalRate: Double
 }
 
-/// A stylized (not cartographically precise) world map plotting the
-/// resolved country of each active connection. Continents are drawn as soft
-/// rounded blobs at roughly their real bounding regions — not traced
-/// coastlines — since the point is showing *where connections are*,
-/// accurately, not tracing an accurate coastline.
+/// A real world map (Natural Earth 110m coastlines, bundled offline) plotting
+/// the resolved country of each active connection — the Little Snitch–style
+/// "where is my Mac talking to" view. Land geometry and pins share one
+/// equirectangular projection, so pins sit on the correct coastlines.
 struct WarMapView: View {
     @EnvironmentObject var connectionMonitor: ConnectionActivityMonitor
 
-    // Fractional (0–1) rects in the same equirectangular space as `project`,
-    // so they line up with the pins. Each is derived from a continent's real
-    // lon/lat bounding box: x = (lon+180)/360, y = (90−lat)/180. Soft rounded
-    // blobs, not traced coastlines — enough to read as "that's roughly where
-    // the landmasses are" behind the accurately-placed connection pins.
-    private static let continentBlobs: [(rect: CGRect, cornerRadius: CGFloat)] = [
-        (CGRect(x: 0.03, y: 0.10, width: 0.32, height: 0.33), 40), // North America
-        (CGRect(x: 0.27, y: 0.43, width: 0.14, height: 0.38), 30), // South America
-        (CGRect(x: 0.47, y: 0.11, width: 0.14, height: 0.19), 18), // Europe
-        (CGRect(x: 0.45, y: 0.29, width: 0.19, height: 0.40), 30), // Africa
-        (CGRect(x: 0.60, y: 0.09, width: 0.37, height: 0.44), 40), // Asia
-        (CGRect(x: 0.79, y: 0.60, width: 0.14, height: 0.16), 18), // Australia
-    ]
+    private static let ocean = Color(red: 0.06, green: 0.08, blue: 0.11)
+    private static let landFill = Color(red: 0.16, green: 0.22, blue: 0.28)
+    private static let landStroke = Color(red: 0.30, green: 0.42, blue: 0.50)
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                Color.black.opacity(0.85)
-                graticule(in: geo.size)
-                landmasses(in: geo.size)
+        ZStack {
+            Canvas { ctx, size in
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Self.ocean))
+
+                var land = Path()
+                for ring in WorldMap.shared.rings {
+                    guard let first = ring.first else { continue }
+                    land.move(to: scaled(first, size))
+                    for point in ring.dropFirst() {
+                        land.addLine(to: scaled(point, size))
+                    }
+                    land.closeSubpath()
+                }
+                ctx.fill(land, with: .color(Self.landFill))
+                ctx.stroke(land, with: .color(Self.landStroke), lineWidth: 0.5)
+            }
+
+            GeometryReader { geo in
                 ForEach(pins) { pin in
                     pinView(pin, in: geo.size)
                 }
             }
         }
-        // A world map in equirectangular projection is 360° of longitude by
-        // 180° of latitude — a true 2:1 aspect. Locking the frame to 2:1 (vs.
-        // a fixed height that stretched it into a box) makes the linear
-        // lon/lat→x/y projection below geographically correct.
-        //
-        // No border/clip of its own: the dashboard renders this full-bleed as
-        // the whole dropdown, so the menu-bar window's own rounded corners do
-        // the clipping.
+        // Equirectangular world maps are 360° lon × 180° lat — a true 2:1.
+        // Rendered full-bleed by the dashboard, so no border/clip of its own.
         .aspectRatio(2, contentMode: .fit)
         .overlay {
             if connectionMonitor.connections.isEmpty {
-                Text("Waiting for active connections…")
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.7))
+                caption("Waiting for active connections…")
             } else if pins.isEmpty {
-                Text("No locations resolved yet…")
-                    .font(.callout)
-                    .foregroundStyle(.white.opacity(0.7))
+                caption("No locations resolved yet…")
             }
         }
     }
 
-    private func graticule(in size: CGSize) -> some View {
-        Path { path in
-            for lonDeg in stride(from: -180, through: 180, by: 30) {
-                let x = CGFloat(lonDeg + 180) / 360 * size.width
-                path.move(to: CGPoint(x: x, y: 0))
-                path.addLine(to: CGPoint(x: x, y: size.height))
-            }
-            for latDeg in stride(from: -90, through: 90, by: 30) {
-                let y = CGFloat(90 - latDeg) / 180 * size.height
-                path.move(to: CGPoint(x: 0, y: y))
-                path.addLine(to: CGPoint(x: size.width, y: y))
-            }
-        }
-        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-    }
-
-    private func landmasses(in size: CGSize) -> some View {
-        ForEach(Array(Self.continentBlobs.enumerated()), id: \.offset) { _, blob in
-            RoundedRectangle(cornerRadius: blob.cornerRadius)
-                .fill(Color.green.opacity(0.16))
-                .frame(width: blob.rect.width * size.width, height: blob.rect.height * size.height)
-                .position(
-                    x: (blob.rect.minX + blob.rect.width / 2) * size.width,
-                    y: (blob.rect.minY + blob.rect.height / 2) * size.height
-                )
-        }
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(.white.opacity(0.7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.black.opacity(0.35), in: Capsule())
     }
 
     private func pinView(_ pin: MapPin, in size: CGSize) -> some View {
         let point = project(lat: pin.lat, lon: pin.lon, in: size)
         return ZStack {
-            Circle()
-                .stroke(Color.red.opacity(0.5), lineWidth: 1.5)
-                .frame(width: 14, height: 14)
-            Circle()
-                .fill(Color.red)
-                .frame(width: 6, height: 6)
+            Circle().fill(Color.red.opacity(0.25)).frame(width: 16, height: 16)
+            Circle().fill(Color.red).frame(width: 7, height: 7)
+            Circle().stroke(Color.white.opacity(0.85), lineWidth: 1).frame(width: 7, height: 7)
         }
         .position(point)
         .help("\(pin.id) — \(pin.connectionCount) connection(s), \(ByteFormatter.rate(pin.totalRate))")
@@ -120,9 +90,12 @@ struct WarMapView: View {
         }
     }
 
+    // WorldMap rings are unit-space (0…1); scale to the view.
+    private func scaled(_ point: CGPoint, _ size: CGSize) -> CGPoint {
+        CGPoint(x: point.x * size.width, y: point.y * size.height)
+    }
+
     private func project(lat: Double, lon: Double, in size: CGSize) -> CGPoint {
-        let x = (lon + 180) / 360 * size.width
-        let y = (90 - lat) / 180 * size.height
-        return CGPoint(x: x, y: y)
+        CGPoint(x: (lon + 180) / 360 * size.width, y: (90 - lat) / 180 * size.height)
     }
 }

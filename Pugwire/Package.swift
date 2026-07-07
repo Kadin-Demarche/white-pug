@@ -9,7 +9,8 @@ let package = Package(
             name: "Pugwire",
             path: "Sources/Pugwire",
             resources: [
-                .copy("GeoData/dbip-country-num.csv")
+                .copy("GeoData/dbip-country-num.csv"),
+                .copy("GeoData/ne_110m_land.json")
             ]
         )
     ]

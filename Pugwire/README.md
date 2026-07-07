@@ -146,6 +146,10 @@ The offline IP-to-country database used by the live connections map is
 [sapics/ip-location-db](https://github.com/sapics/ip-location-db), licensed
 under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
+The world-map coastlines (`GeoData/ne_110m_land.json`) are from
+[Natural Earth](https://www.naturalearthdata.com) (1:110m physical land),
+which is in the public domain.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
