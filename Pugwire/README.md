@@ -20,20 +20,28 @@ build it themselves, and trust exactly what it does.
 
 - **No network requests, ever.** Pugwire doesn't phone home, check for
   updates, send analytics, or resolve anything remotely. Grep the source —
-  there is no `URLSession`, no socket client code, nothing.
+  there is no `URLSession`, no socket client code, nothing. The live
+  connections map resolves remote IPs to countries using a **bundled,
+  offline** IP-to-country database (`Sources/Pugwire/GeoData/`) — no
+  geolocation API is ever called.
 - **No telemetry, no crash reporting, no accounts.**
 - **All history is local and human-readable.** Bandwidth history is stored as
   plain JSON Lines at `~/Library/Application Support/Pugwire/history.jsonl`.
   Open it in any text editor.
-- **Small surface area.** The whole app is a couple hundred lines of Swift
-  across a dozen files — auditable in an afternoon.
+- **Small surface area.** The core monitoring code is a couple hundred lines
+  of Swift across a dozen files — auditable in an afternoon. (The bundled
+  GeoIP CSV is a large data file, not code — see Acknowledgements.)
 
 ## Features (v0.1)
 
 - Live download/upload totals in the menu bar.
 - A dropdown dashboard with a rolling history chart and a per-process list
   (icon, name, live ↓/↑ rate), sorted busiest-first.
-- Local-only history persisted across restarts (30-day retention by default).
+- A live connections view (individual sockets, not just per-process totals)
+  and a world-map visualization plotting each active connection's remote
+  country, resolved entirely offline.
+- Local-only history persisted across restarts (configurable retention,
+  30 days by default).
 - Adjustable polling interval, optional launch-at-login, and a debug mode
   that logs raw sampler output for troubleshooting.
 
@@ -58,13 +66,21 @@ This keeps the project buildable and runnable by anyone with just Xcode's
 command line tools — no paid developer account, no kernel extensions, no
 notarization required to use it yourself.
 
+A second, independent `nettop` invocation (without `-P`) also surfaces
+individual connections — remote host, port, interface, state
+(`NettopConnectionSampler.swift`) — used by the Connections list and the
+live map. `-n` disables nettop's own reverse-DNS resolution so remote
+addresses come back as literal IPs, which the map's GeoIP resolver
+(`GeoIPResolver.swift`) needs anyway.
+
 ### Roadmap: a v2 based on Network Extension
 
-`nettop`'s output format isn't a stable, documented API, and it only shows
-counters, not per-connection detail (remote host, ports) the way GlassWire's
-paid tiers do. A `NEFilterDataProvider`-based system extension (see LuLu's
-source for prior art) would give more accurate, connection-level data and is
-the natural next step for contributors who want to take this further.
+`nettop`'s output format isn't a stable, documented API, and even with
+per-connection detail it's still a polling snapshot of *current* sockets, not
+a real packet-level view. A `NEFilterDataProvider`-based system extension
+(see LuLu's source for prior art) would give more accurate, event-driven
+connection data and is the natural next step for contributors who want to
+take this further.
 
 ## Requirements
 
@@ -98,13 +114,13 @@ treat `Package.swift` as the project.
 
 ## Known limitations / help wanted
 
-This was built and written without access to a real Mac to compile or run it
-against — **it has not yet been built or tested on real hardware.** If you
-try it and something doesn't work, especially around `nettop`'s output
-format (which can vary across macOS versions), please open an issue or a PR.
+Built and tested on real hardware. `nettop`'s output format still isn't a
+stable, documented API and can vary across macOS versions/interfaces — if
+something doesn't parse correctly on yours, please open an issue or a PR.
 Specific things worth checking:
 
-- Whether `nettop -P -x -J bytes_in,bytes_out` produces the header/row shape
+- Whether `nettop -P -x -L 0 -J bytes_in,bytes_out` (note: capital `-L` for
+  CSV output, not lowercase `-l`) produces the header/row shape
   `NettopSampler.swift` expects on your macOS version. Enable "Log raw
   nettop output to Console" in Settings (or set the `debugNettopLogging`
   default) and compare against what the parser expects.
@@ -113,12 +129,22 @@ Specific things worth checking:
   a shared/multi-user Mac.
 - Whether macOS prompts for a "Local Network" permission the first time
   Pugwire runs `nettop`; if so, allow it.
+- The GeoIP country database is a point-in-time snapshot — IP block
+  assignments shift over time, so map lookups slowly drift out of date
+  between manual updates of `Sources/Pugwire/GeoData/dbip-country-num.csv`.
 
 ## Contributing
 
 Issues and PRs welcome. The codebase is intentionally small and
 dependency-free (no third-party Swift packages) to keep it easy to audit —
 please keep it that way.
+
+## Acknowledgements
+
+The offline IP-to-country database used by the live connections map is
+[DB-IP](https://db-ip.com)'s Lite data, redistributed via
+[sapics/ip-location-db](https://github.com/sapics/ip-location-db), licensed
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
 ## License
 

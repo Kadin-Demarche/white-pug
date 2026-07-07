@@ -131,7 +131,10 @@ final class BandwidthAggregator: ObservableObject {
             name = app.localizedName ?? name
             icon = app.icon
         } else {
-            var buffer = [Int8](repeating: 0, count: Int(PROC_PIDPATHINFO_MAXSIZE))
+            // PROC_PIDPATHINFO_MAXSIZE (4*MAXPATHLEN) doesn't import into Swift on
+            // newer SDKs (fails with "structure not supported"); inline the same
+            // value proc_pidpath requires for its buffer.
+            var buffer = [Int8](repeating: 0, count: 4 * Int(MAXPATHLEN))
             let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
             if length > 0 {
                 let path = String(cString: buffer)

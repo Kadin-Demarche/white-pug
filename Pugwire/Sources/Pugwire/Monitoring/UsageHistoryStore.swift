@@ -11,7 +11,7 @@ final class UsageHistoryStore: ObservableObject {
 
     private let queue = DispatchQueue(label: "pugwire.history.store")
     private let fileURL: URL
-    private let retention: TimeInterval
+    private var retention: TimeInterval
 
     private var minuteBucketStart: Date?
     private var minuteDownSum: Double = 0
@@ -25,6 +25,20 @@ final class UsageHistoryStore: ObservableObject {
         self.fileURL = supportDir.appendingPathComponent("history.jsonl")
         self.retention = TimeInterval(retentionDays * 24 * 60 * 60)
         loadRecentHistory()
+    }
+
+    /// Updates how much history is kept in `recentPoints` (and thus shown in
+    /// the chart) going forward. Doesn't touch what's already on disk — old
+    /// points age out of `recentPoints` naturally as new buckets flush.
+    func updateRetention(days: Int) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.retention = TimeInterval(days * 24 * 60 * 60)
+            let cutoff = Date().addingTimeInterval(-self.retention)
+            DispatchQueue.main.async {
+                self.recentPoints.removeAll { $0.timestamp < cutoff }
+            }
+        }
     }
 
     func record(at date: Date, downBytesPerSec: Double, upBytesPerSec: Double) {

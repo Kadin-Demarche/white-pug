@@ -3,10 +3,13 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var aggregator: BandwidthAggregator
     @EnvironmentObject var historyStore: UsageHistoryStore
+    @EnvironmentObject var connectionMonitor: ConnectionActivityMonitor
 
     @AppStorage("pollingIntervalSeconds") private var pollingIntervalSeconds: Int = 1
     @AppStorage("launchAtLogin") private var launchAtLoginEnabled: Bool = false
     @AppStorage("debugNettopLogging") private var debugNettopLogging: Bool = false
+    @AppStorage("menuBarShowsRates") private var menuBarShowsRates: Bool = true
+    @AppStorage("historyRetentionDays") private var historyRetentionDays: Int = 30
 
     var body: some View {
         Form {
@@ -18,6 +21,7 @@ struct SettingsView: View {
                 }
                 .onChange(of: pollingIntervalSeconds) { _, newValue in
                     aggregator.start(intervalSeconds: newValue, debugLoggingEnabled: debugNettopLogging)
+                    connectionMonitor.start(intervalSeconds: newValue)
                 }
 
                 Toggle("Launch at login", isOn: $launchAtLoginEnabled)
@@ -31,7 +35,21 @@ struct SettingsView: View {
                     }
             }
 
+            Section("Menu Bar") {
+                Toggle("Show download/upload speeds", isOn: $menuBarShowsRates)
+            }
+
             Section("Data") {
+                Picker("Keep history for", selection: $historyRetentionDays) {
+                    Text("7 days").tag(7)
+                    Text("14 days").tag(14)
+                    Text("30 days").tag(30)
+                    Text("90 days").tag(90)
+                }
+                .onChange(of: historyRetentionDays) { _, newValue in
+                    historyStore.updateRetention(days: newValue)
+                }
+
                 Button("Clear saved history") {
                     historyStore.clearHistory()
                 }

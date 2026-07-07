@@ -60,8 +60,8 @@ final class NettopSampler {
         task.arguments = [
             "nettop",
             "-P", // aggregate connections by owning process
-            "-x", // extended, script-friendly (non-interactive) output
-            "-l", "0", // run indefinitely instead of a fixed sample count
+            "-x", // extended: raw byte counts instead of human-readable suffixes (MiB, etc.)
+            "-L", "0", // logging mode, comma-separated (CSV) output; run indefinitely
             "-s", "\(intervalSeconds)",
             "-J", "bytes_in,bytes_out"
         ]
@@ -137,29 +137,33 @@ final class NettopSampler {
 
         guard let header = currentHeader, header.count == fields.count else { return }
 
-        var row: [String: String] = [:]
-        for (key, value) in zip(header, fields) {
-            row[key] = value
-        }
-
-        if let sample = parseRow(row) {
+        if let sample = parseRow(header: header, fields: fields) {
             pendingRows.append(sample)
         }
     }
 
-    private func parseRow(_ row: [String: String]) -> NettopRawSample? {
-        guard
-            let bytesInString = row.first(where: { $0.key.caseInsensitiveCompare("bytes_in") == .orderedSame })?.value,
-            let bytesOutString = row.first(where: { $0.key.caseInsensitiveCompare("bytes_out") == .orderedSame })?.value,
-            let bytesIn = UInt64(bytesInString),
-            let bytesOut = UInt64(bytesOutString)
-        else { return nil }
+    // Takes the header/fields arrays directly rather than zipping into a
+    // [String: String]: nettop's CSV framing has an unnamed leading column
+    // (the process label) and an unnamed trailing column (from the trailing
+    // comma), so both header slots are "" — collapsing them into a
+    // dictionary keyed by column name silently drops the process label.
+    private func parseRow(header: [String], fields: [String]) -> NettopRawSample? {
+        var bytesIn: UInt64?
+        var bytesOut: UInt64?
+        for (key, value) in zip(header, fields) {
+            if key.caseInsensitiveCompare("bytes_in") == .orderedSame {
+                bytesIn = UInt64(value)
+            } else if key.caseInsensitiveCompare("bytes_out") == .orderedSame {
+                bytesOut = UInt64(value)
+            }
+        }
+        guard let bytesIn, let bytesOut else { return nil }
 
         // nettop -P labels the process column "name.pid" (e.g. "Safari.482").
         // We scan every field for that shape instead of trusting a fixed
         // column name/position, since nettop's header naming for that
         // particular column is inconsistent across macOS versions.
-        for value in row.values {
+        for value in fields {
             if let (name, pid) = splitProcessLabel(value) {
                 return NettopRawSample(
                     processLabel: name,

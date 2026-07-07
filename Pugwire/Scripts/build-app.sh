@@ -23,6 +23,15 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${APP_DIR}/Contents/Info.plist"
 
+# Swift Package Manager resources (currently: the offline GeoIP database)
+# build into a "<Package>_<Target>.bundle" next to the executable; Bundle.module
+# looks for it under Bundle.main.resourceURL, i.e. Contents/Resources/ in a
+# real .app bundle.
+for resource_bundle in "${BUILD_DIR}"/*.bundle; do
+    [ -e "${resource_bundle}" ] || continue
+    cp -R "${resource_bundle}" "${APP_DIR}/Contents/Resources/"
+done
+
 echo "==> Ad-hoc signing (local use only, not notarized)"
 codesign --force --deep --sign - "${APP_DIR}"
 

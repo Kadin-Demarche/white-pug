@@ -7,7 +7,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Pugwire",
-            path: "Sources/Pugwire"
+            path: "Sources/Pugwire",
+            resources: [
+                .copy("GeoData/dbip-country-num.csv")
+            ]
         )
     ]
 )
